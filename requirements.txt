@@ -8,3 +8,5 @@ cohere==4.56
 umap-learn==0.5.5
 altair==5.2.0
 datasets==2.18.0
+FlagEmbedding==1.2.8
+fastembed==0.2.5
