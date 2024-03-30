@@ -8,6 +8,7 @@ from dotenv import find_dotenv, load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langchain_cohere import ChatCohere
 from langchain_community.document_loaders.pdf import PyMuPDFLoader
+from langchain_community.embeddings import OCIGenAIEmbeddings
 from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -25,6 +26,7 @@ OPENAI_BASE_URL = os.environ["OPENAI_BASE_URL"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
 COHERE_API_KEY = os.environ["COHERE_API_KEY"]
+MY_COMPARTMENT_OCID = os.environ["MY_COMPARTMENT_OCID"]
 
 ORACLE_AI_VECTOR_CONNECTION_STRING = os.environ["ORACLE_AI_VECTOR_CONNECTION_STRING"]
 conn = oracledb.connect(dsn=ORACLE_AI_VECTOR_CONNECTION_STRING)
@@ -37,9 +39,14 @@ claude_opus_chat = ChatAnthropic(anthropic_api_key=ANTHROPIC_API_KEY, model_name
 google_gemini_pro_chat = ChatGoogleGenerativeAI(google_api_key=GOOGLE_API_KEY, model="gemini-pro")
 
 bge_m3_embeddings = BGEM3Embeddings()
+oci_cohere_embeddings = OCIGenAIEmbeddings(
+    model_id="cohere.embed-multilingual-v3.0",
+    service_endpoint="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
+    compartment_id=MY_COMPARTMENT_OCID,
+)
 
-file_content = []
-file_content_splits = []
+file_contents = []
+file_contents_splits = []
 
 select_sql_euclidean_score0 = """
     SELECT 
@@ -112,16 +119,20 @@ def load_document(uploaded_file_input):
     """
     loader = PyMuPDFLoader(uploaded_file_input.name)
 
-    global file_content
-    file_content = loader.load()
-    # print(f"data: {data}")
+    global file_contents
+    file_contents = loader.load()
+    for doc in file_contents:
+        file_name = os.path.basename(doc.metadata['source'])
+        doc.metadata['source'] = file_name
+        doc.metadata['file_path'] = file_name
+    print(f"{file_contents=}")
     all_page_content_text_output = ""
-    page_count = len(file_content)
+    page_count = len(file_contents)
     for i in range(page_count):
-        page_content_text_output = re.sub(r'\n\n+', '|' * 10, file_content[i].page_content)
+        page_content_text_output = re.sub(r'\n\n+', '|' * 10, file_contents[i].page_content)
         page_content_text_output = re.sub(r'\s+', ' ', page_content_text_output)
         page_content_text_output = re.sub(r'\|{10}', '\n', page_content_text_output)
-        file_content[i].page_content = page_content_text_output
+        file_contents[i].page_content = page_content_text_output
         all_page_content_text_output += '\n\n' + page_content_text_output
 
     return gr.Textbox(value=str(page_count)), gr.Textbox(value=all_page_content_text_output)
@@ -134,12 +145,12 @@ def split_document(chunk_size_text_input, chunk_overlap_text_input):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=int(chunk_size_text_input),
                                                    chunk_overlap=int(chunk_overlap_text_input))
 
-    global file_content, file_content_splits
-    file_content_splits = text_splitter.split_documents(file_content)
-    # print(f"all_splits: {all_splits}")
-    chunk_count_text_output = len(file_content_splits)
-    first_trunk_content_text_output = file_content_splits[0].page_content
-    last_trunk_content_text_output = file_content_splits[-1].page_content
+    global file_contents, file_contents_splits
+    file_contents_splits = text_splitter.split_documents(file_contents)
+    print(f"{file_contents_splits=}")
+    chunk_count_text_output = len(file_contents_splits)
+    first_trunk_content_text_output = file_contents_splits[0].page_content
+    last_trunk_content_text_output = file_contents_splits[-1].page_content
 
     return gr.Textbox(value=str(chunk_count_text_output)), gr.Textbox(
         value=first_trunk_content_text_output), gr.Textbox(value=last_trunk_content_text_output)
@@ -151,18 +162,28 @@ def embed_document():
     The most common way to do this is to embed the contents of each document split.
     We store the embedding and splits in a vectorstore.
     """
-    first_trunk_vector_text_output = bge_m3_embeddings.embed_query(file_content_splits[0].page_content)
-    last_trunk_vector_text_output = bge_m3_embeddings.embed_query(file_content_splits[-1].page_content)
+    global file_contents_splits
+    # first_trunk_vector_text_output = bge_m3_embeddings.embed_query(file_contents_splits[0].page_content)
+    # last_trunk_vector_text_output = bge_m3_embeddings.embed_query(file_contents_splits[-1].page_content)
+    first_trunk_vector_text_output = oci_cohere_embeddings.embed_query(file_contents_splits[0].page_content)
+    last_trunk_vector_text_output = oci_cohere_embeddings.embed_query(file_contents_splits[-1].page_content)
 
-    # Use OracleAIVector
-    OracleAIVector.from_documents(
-        embedding=bge_m3_embeddings,
-        documents=file_content_splits,
-        collection_name="docs_of_oracle_ai_vector",
-        connection_string=ORACLE_AI_VECTOR_CONNECTION_STRING,
-        pre_delete_collection=True,  # Overriding a vectorstore
-    )
-    # print(f"vectorstore: {vectorstore}")
+    # OCI Cohere support inputs array size within [1, 96].
+    pre_delete_collection = True
+    while file_contents_splits:
+        # Process documents in chunks of 96
+        current_chunk = file_contents_splits[:96]
+        OracleAIVector.from_documents(
+            embedding=oci_cohere_embeddings,
+            documents=current_chunk,
+            collection_name="docs_of_oracle_ai_vector",
+            connection_string=ORACLE_AI_VECTOR_CONNECTION_STRING,
+            pre_delete_collection=pre_delete_collection,
+        )
+        # Only the first chunk needs to pre-delete the collection.
+        pre_delete_collection = False
+        # Prepare the remaining documents for the next iteration.
+        file_contents_splits = file_contents_splits[96:]
 
     return gr.Textbox(value=str(first_trunk_vector_text_output)), gr.Textbox(value=str(last_trunk_vector_text_output))
 
@@ -175,7 +196,8 @@ def chat_document_stream(question_text_input):
     # Use OracleAIVector
     vectorstore = OracleAIVector(connection_string=ORACLE_AI_VECTOR_CONNECTION_STRING,
                                  collection_name="docs_of_oracle_ai_vector",
-                                 embedding_function=bge_m3_embeddings,
+                                 # embedding_function=bge_m3_embeddings,
+                                 embedding_function=oci_cohere_embeddings,
                                  )
     docs_dataframe = []
     docs = vectorstore.similarity_search_with_score(question_text_input)
@@ -233,8 +255,8 @@ def calc_distance_scores(sentence0_input, sentence1_input, sentence2_input):
             sentence2_input
         ]})
 
-    # embeddings = cohere_embeddings.embed_documents(sentences_all['text'].tolist())
-    embeddings = bge_m3_embeddings.embed_documents(sentences_all['text'].tolist())
+    # embeddings = bge_m3_embeddings.embed_documents(sentences_all['text'].tolist())
+    embeddings = oci_cohere_embeddings.embed_documents(sentences_all['text'].tolist())
     sentence0_embedding = embeddings[0]
     sentence1_embedding = embeddings[1]
     sentence2_embedding = embeddings[2]
