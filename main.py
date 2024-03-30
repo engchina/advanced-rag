@@ -5,25 +5,37 @@ import gradio as gr
 import oracledb
 import pandas as pd
 from dotenv import find_dotenv, load_dotenv
+from langchain_anthropic import ChatAnthropic
+from langchain_cohere import ChatCohere
 from langchain_community.document_loaders.pdf import PyMuPDFLoader
-# from langchain_community.embeddings import CohereEmbeddings
 from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from mylangchain.embeddings.bge_m3 import BGEM3Embeddings
 from mylangchain.vectorstores.oracleaivector import OracleAIVector
+
+# from langchain_community.embeddings import CohereEmbeddings
 
 # read local .env file
 _ = load_dotenv(find_dotenv())
 
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 OPENAI_BASE_URL = os.environ["OPENAI_BASE_URL"]
+ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
+COHERE_API_KEY = os.environ["COHERE_API_KEY"]
+
 ORACLE_AI_VECTOR_CONNECTION_STRING = os.environ["ORACLE_AI_VECTOR_CONNECTION_STRING"]
 conn = oracledb.connect(dsn=ORACLE_AI_VECTOR_CONNECTION_STRING)
 
-command_r_chat = ChatOpenAI(api_key=OPENAI_API_KEY, base_url="", model_name="gpt-4",
-                            temperature=0)
+# command_r_chat = ChatOpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL, model_name="gpt-4",
+#                             temperature=0)
+command_r_chat = ChatCohere(cohere_api_key=COHERE_API_KEY, model="command-r", max_tokens=4096, temperature=0)
+claude_opus_chat = ChatAnthropic(anthropic_api_key=ANTHROPIC_API_KEY, model_name="claude-3-opus-20240229",
+                                 temperature=0)
+google_gemini_pro_chat = ChatGoogleGenerativeAI(google_api_key=GOOGLE_API_KEY, model="gemini-pro")
+
 bge_m3_embeddings = BGEM3Embeddings()
 
 file_content = []
@@ -174,12 +186,18 @@ def chat_document_stream(question_text_input):
         docs_dataframe.append([doc.page_content, doc.metadata["source"]])
 
     template = """
-    Use the following pieces of context to answer the question at the end. 
+    Use the following pieces of Context to answer the question at the end. 
     If you don't know the answer, just say that you don't know, don't try to make up an answer.
-    Use ten sentences maximum and keep the answer as concise as possible.
-    Don't try to answer anything that isn't in context.  
+    Use the EXACT TEXT from the Context WITHOUT ANY MODIFICATIONS, REORGANIZATION or EMBELLISHMENT.
+    Don't try to answer anything that isn't in Context.
+    Context:
+    ```
     {context}
-    Question: {question}
+    ```
+    Question: 
+    ```
+    {question}
+    ```
     Helpful Answer:"""
     rag_prompt_custom = PromptTemplate.from_template(template)
     # Method-1
@@ -197,8 +215,11 @@ def chat_document_stream(question_text_input):
     # Method-2
     message = rag_prompt_custom.format_prompt(context=docs, question=question_text_input)
     print(f"message.to_messages(): {message.to_messages()}")
-    result = command_r_chat(message.to_messages())
-    return gr.Dataframe(value=docs_dataframe, wrap=True, column_widths=["70%", "30%"]), gr.Textbox(result.content)
+    command_r_result = command_r_chat.invoke(message.to_messages())
+    opus_result = claude_opus_chat.invoke(message.to_messages())
+    gemini_result = google_gemini_pro_chat.invoke(message.to_messages())
+    return gr.Dataframe(value=docs_dataframe, wrap=True, column_widths=["70%", "30%"]), gr.Textbox(
+        command_r_result.content), gr.Textbox(opus_result.content), gr.Textbox(gemini_result.content)
 
 
 def calc_distance_scores(sentence0_input, sentence1_input, sentence2_input):
@@ -437,8 +458,19 @@ with gr.Blocks(css=custom_css) as app:
                     )
             with gr.Row():
                 with gr.Column():
-                    answer_text = gr.Textbox(label="回答", lines=15, max_lines=15,
-                                             autoscroll=False, interactive=False, show_copy_button=True)
+                    answer_by_cohere_command_r_text = gr.Textbox(label="Cohere Command-r 回答", lines=5, max_lines=10,
+                                                                 autoscroll=False, interactive=False,
+                                                                 show_copy_button=True)
+            with gr.Row():
+                with gr.Column():
+                    answer_by_claude_opus_text = gr.Textbox(label="Claude Opus 回答", lines=5, max_lines=10,
+                                                            autoscroll=False, interactive=False, show_copy_button=True)
+
+            with gr.Row():
+                with gr.Column():
+                    answer_by_google_gemini_text = gr.Textbox(label="Google Gemini Pro 回答", lines=5, max_lines=10,
+                                                              autoscroll=False, interactive=False,
+                                                              show_copy_button=True)
             with gr.Row():
                 with gr.Column():
                     question_text = gr.Textbox(label="質問", lines=1)
@@ -526,7 +558,8 @@ with gr.Blocks(css=custom_css) as app:
 
         chat_document_button.click(chat_document_stream,
                                    inputs=[question_text],
-                                   outputs=[result_dataframe, answer_text])
+                                   outputs=[result_dataframe, answer_by_cohere_command_r_text,
+                                            answer_by_claude_opus_text, answer_by_google_gemini_text])
 
         calculate_distance.click(calc_distance_scores,
                                  inputs=[sentence0] + sentences,
