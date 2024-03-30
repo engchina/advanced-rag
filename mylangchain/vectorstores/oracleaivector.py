@@ -483,7 +483,7 @@ class OracleAIVector(VectorStore):
     def similarity_search_with_score_by_vector(
             self,
             embedding: List[float],
-            k: int = 4,
+            k: int = 5,
             filter: Optional[dict] = None,
     ) -> List[Tuple[Document, float]]:
         results = self.__query_collection(embedding=embedding, k=k, filter=filter)
@@ -506,7 +506,7 @@ class OracleAIVector(VectorStore):
     def __query_collection(
             self,
             embedding: List[float],
-            k: int = 4,
+            k: int = 5,
             filter: Optional[Dict[str, str]] = None,
     ) -> List[Any]:
         """Query the collection."""
@@ -527,7 +527,7 @@ class OracleAIVector(VectorStore):
                             cmetadata,
                             custom_id,
                             uuid,
-                            VECTOR_DISTANCE(embedding, to_vector(:1)) as distance
+                            VECTOR_DISTANCE(embedding, to_vector(:1), COSINE) as distance
                         FROM langchain_oracle_embedding
                         WHERE
                             collection_id = :2
@@ -593,7 +593,7 @@ class OracleAIVector(VectorStore):
     def similarity_search_by_vector(
             self,
             embedding: List[float],
-            k: int = 4,
+            k: int = 5,
             filter: Optional[dict] = None,
             **kwargs: Any,
     ) -> List[Document]:

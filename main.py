@@ -14,6 +14,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from mylangchain.embeddings.bge_m3 import BGEM3Embeddings
+from mylangchain.embeddings.e5_large import MultilingualE5LargeEmbeddings
 from mylangchain.vectorstores.oracleaivector import OracleAIVector
 
 # from langchain_community.embeddings import CohereEmbeddings
@@ -36,9 +37,12 @@ conn = oracledb.connect(dsn=ORACLE_AI_VECTOR_CONNECTION_STRING)
 command_r_chat = ChatCohere(cohere_api_key=COHERE_API_KEY, model="command-r", max_tokens=4096, temperature=0)
 claude_opus_chat = ChatAnthropic(anthropic_api_key=ANTHROPIC_API_KEY, model_name="claude-3-opus-20240229",
                                  temperature=0)
+claude_sonnet_chat = ChatAnthropic(anthropic_api_key=ANTHROPIC_API_KEY, model_name="claude-3-sonnet-20240229",
+                                   temperature=0)
 google_gemini_pro_chat = ChatGoogleGenerativeAI(google_api_key=GOOGLE_API_KEY, model="gemini-pro")
 
 bge_m3_embeddings = BGEM3Embeddings()
+e5_large_embeddings = MultilingualE5LargeEmbeddings()
 oci_cohere_embeddings = OCIGenAIEmbeddings(
     model_id="cohere.embed-multilingual-v3.0",
     service_endpoint="https://inference.generativeai.us-chicago-1.oci.oraclecloud.com",
@@ -165,8 +169,10 @@ def embed_document():
     global file_contents_splits
     # first_trunk_vector_text_output = bge_m3_embeddings.embed_query(file_contents_splits[0].page_content)
     # last_trunk_vector_text_output = bge_m3_embeddings.embed_query(file_contents_splits[-1].page_content)
-    first_trunk_vector_text_output = oci_cohere_embeddings.embed_query(file_contents_splits[0].page_content)
-    last_trunk_vector_text_output = oci_cohere_embeddings.embed_query(file_contents_splits[-1].page_content)
+    first_trunk_vector_text_output = e5_large_embeddings.embed_query(file_contents_splits[0].page_content)
+    last_trunk_vector_text_output = e5_large_embeddings.embed_query(file_contents_splits[-1].page_content)
+    # first_trunk_vector_text_output = oci_cohere_embeddings.embed_query(file_contents_splits[0].page_content)
+    # last_trunk_vector_text_output = oci_cohere_embeddings.embed_query(file_contents_splits[-1].page_content)
 
     # OCI Cohere support inputs array size within [1, 96].
     pre_delete_collection = True
@@ -174,7 +180,9 @@ def embed_document():
         # Process documents in chunks of 96
         current_chunk = file_contents_splits[:96]
         OracleAIVector.from_documents(
-            embedding=oci_cohere_embeddings,
+            # embedding=bge_m3_embeddings,
+            embedding=e5_large_embeddings,
+            # embedding=oci_cohere_embeddings,
             documents=current_chunk,
             collection_name="docs_of_oracle_ai_vector",
             connection_string=ORACLE_AI_VECTOR_CONNECTION_STRING,
@@ -197,15 +205,15 @@ def chat_document_stream(question_text_input):
     vectorstore = OracleAIVector(connection_string=ORACLE_AI_VECTOR_CONNECTION_STRING,
                                  collection_name="docs_of_oracle_ai_vector",
                                  # embedding_function=bge_m3_embeddings,
-                                 embedding_function=oci_cohere_embeddings,
+                                 embedding_function=e5_large_embeddings,
+                                 # embedding_function=oci_cohere_embeddings,
                                  )
     docs_dataframe = []
     docs = vectorstore.similarity_search_with_score(question_text_input)
-    # print(f"len(docs): {len(docs)}")
     for doc, score in docs:
         # print(f"doc: {doc}")
         # print("Score: ", score)
-        docs_dataframe.append([doc.page_content, doc.metadata["source"]])
+        docs_dataframe.append([doc.page_content, score, doc.metadata["source"]])
 
     template = """
     Use the following pieces of Context to answer the question at the end. 
@@ -239,9 +247,11 @@ def chat_document_stream(question_text_input):
     print(f"message.to_messages(): {message.to_messages()}")
     command_r_result = command_r_chat.invoke(message.to_messages())
     opus_result = claude_opus_chat.invoke(message.to_messages())
+    sonnet_result = claude_sonnet_chat.invoke(message.to_messages())
     gemini_result = google_gemini_pro_chat.invoke(message.to_messages())
-    return gr.Dataframe(value=docs_dataframe, wrap=True, column_widths=["70%", "30%"]), gr.Textbox(
-        command_r_result.content), gr.Textbox(opus_result.content), gr.Textbox(gemini_result.content)
+    return gr.Dataframe(value=docs_dataframe, wrap=True, column_widths=["50%", "20%", "30%"]), gr.Textbox(
+        command_r_result.content), gr.Textbox(opus_result.content), gr.Textbox(sonnet_result.content), gr.Textbox(
+        gemini_result.content)
 
 
 def calc_distance_scores(sentence0_input, sentence1_input, sentence2_input):
@@ -256,7 +266,8 @@ def calc_distance_scores(sentence0_input, sentence1_input, sentence2_input):
         ]})
 
     # embeddings = bge_m3_embeddings.embed_documents(sentences_all['text'].tolist())
-    embeddings = oci_cohere_embeddings.embed_documents(sentences_all['text'].tolist())
+    embeddings = e5_large_embeddings.embed_documents(sentences_all['text'].tolist())
+    # embeddings = oci_cohere_embeddings.embed_documents(sentences_all['text'].tolist())
     sentence0_embedding = embeddings[0]
     sentence1_embedding = embeddings[1]
     sentence2_embedding = embeddings[2]
@@ -471,12 +482,12 @@ with gr.Blocks(css=custom_css) as app:
             with gr.Row():
                 with gr.Column():
                     result_dataframe = gr.Dataframe(
-                        headers=["ページ・コンテンツ", "ソース"],
-                        datatype=["str", "str"],
+                        headers=["ページ・コンテンツ", "コサイン距離", "ソース"],
+                        datatype=["str", "str", "str"],
                         row_count=5,
-                        col_count=(2, "fixed"),
+                        col_count=(3, "fixed"),
                         wrap=True,
-                        column_widths=["70%", "30%"]
+                        column_widths=["70%", "20%", "30%"]
                     )
             with gr.Row():
                 with gr.Column():
@@ -487,6 +498,12 @@ with gr.Blocks(css=custom_css) as app:
                 with gr.Column():
                     answer_by_claude_opus_text = gr.Textbox(label="Claude Opus 回答", lines=5, max_lines=10,
                                                             autoscroll=False, interactive=False, show_copy_button=True)
+
+            with gr.Row():
+                with gr.Column():
+                    answer_by_claude_sonnet_text = gr.Textbox(label="Claude Sonnet 回答", lines=5, max_lines=10,
+                                                              autoscroll=False, interactive=False,
+                                                              show_copy_button=True)
 
             with gr.Row():
                 with gr.Column():
@@ -581,7 +598,8 @@ with gr.Blocks(css=custom_css) as app:
         chat_document_button.click(chat_document_stream,
                                    inputs=[question_text],
                                    outputs=[result_dataframe, answer_by_cohere_command_r_text,
-                                            answer_by_claude_opus_text, answer_by_google_gemini_text])
+                                            answer_by_claude_opus_text, answer_by_claude_sonnet_text,
+                                            answer_by_google_gemini_text])
 
         calculate_distance.click(calc_distance_scores,
                                  inputs=[sentence0] + sentences,
