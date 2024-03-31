@@ -6,7 +6,7 @@ from langchain.pydantic_v1 import BaseModel, Extra, root_validator
 from langchain.schema.embeddings import Embeddings
 
 
-class MultilingualE5LargeEmbeddings(BaseModel, Embeddings):
+class MultilingualE5LargeInstructEmbeddings(BaseModel, Embeddings):
     """intfloat/multilingual-e5-large embedding models.
 
     To use, you should have the ``intfloat/multilingual-e5-large`` python package installed, and the
@@ -51,7 +51,7 @@ class MultilingualE5LargeEmbeddings(BaseModel, Embeddings):
         Returns:
             List of embeddings, one for each text.
         """
-        embed_model = TextEmbedding(model_name="intfloat/multilingual-e5-large", max_length=512)
+        embed_model = TextEmbedding(model_name="intfloat/multilingual-e5-large-instruct", max_length=512)
         embeddings = list(embed_model.embed(texts))
         return [list(map(float, array.array("f", e))) for e in embeddings]
 
@@ -64,7 +64,7 @@ class MultilingualE5LargeEmbeddings(BaseModel, Embeddings):
         Returns:
             List of embeddings, one for each text.
         """
-        embed_model = TextEmbedding(model_name="intfloat/multilingual-e5-large", max_length=512)
+        embed_model = TextEmbedding(model_name="intfloat/multilingual-e5-large-instruct", max_length=512)
         embeddings = list(embed_model.embed(texts))
         return [list(map(float, array.array("f", e))) for e in embeddings]
 
@@ -77,7 +77,7 @@ class MultilingualE5LargeEmbeddings(BaseModel, Embeddings):
         Returns:
             Embeddings for the text.
         """
-        embed_model = TextEmbedding(model_name="intfloat/multilingual-e5-large", max_length=512)
+        embed_model = TextEmbedding(model_name="intfloat/multilingual-e5-large-instruct", max_length=512)
         embeddings = list(embed_model.embed([text]))
         return list(map(float, array.array("f", embeddings[0])))
 
@@ -90,6 +90,6 @@ class MultilingualE5LargeEmbeddings(BaseModel, Embeddings):
         Returns:
             Embeddings for the text.
         """
-        embed_model = TextEmbedding(model_name="intfloat/multilingual-e5-large", max_length=512)
+        embed_model = TextEmbedding(model_name="intfloat/multilingual-e5-large-instruct", max_length=512)
         embeddings = list(embed_model.embed([text]))
         return list(map(float, array.array("f", embeddings[0])))

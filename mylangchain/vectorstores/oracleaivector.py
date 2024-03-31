@@ -423,7 +423,7 @@ class OracleAIVector(VectorStore):
     def similarity_search(
             self,
             query: str,
-            k: int = 4,
+            k: int = 5,
             filter: Optional[dict] = None,
             **kwargs: Any,
     ) -> List[Document]:
@@ -447,7 +447,7 @@ class OracleAIVector(VectorStore):
     def similarity_search_with_score(
             self,
             query: str,
-            k: int = 4,
+            k: int = 5,
             filter: Optional[dict] = None,
     ) -> List[Tuple[Document, float]]:
         """Return docs most similar to query.
@@ -812,7 +812,7 @@ class OracleAIVector(VectorStore):
     def max_marginal_relevance_search_with_score_by_vector(
             self,
             embedding: List[float],
-            k: int = 4,
+            k: int = 5,
             fetch_k: int = 20,
             lambda_mult: float = 0.5,
             filter: Optional[Dict[str, str]] = None,
@@ -857,7 +857,7 @@ class OracleAIVector(VectorStore):
     def max_marginal_relevance_search(
             self,
             query: str,
-            k: int = 4,
+            k: int = 5,
             fetch_k: int = 20,
             lambda_mult: float = 0.5,
             filter: Optional[Dict[str, str]] = None,
@@ -894,7 +894,7 @@ class OracleAIVector(VectorStore):
     def max_marginal_relevance_search_with_score(
             self,
             query: str,
-            k: int = 4,
+            k: int = 5,
             fetch_k: int = 20,
             lambda_mult: float = 0.5,
             filter: Optional[dict] = None,
@@ -934,7 +934,7 @@ class OracleAIVector(VectorStore):
     def max_marginal_relevance_search_by_vector(
             self,
             embedding: List[float],
-            k: int = 4,
+            k: int = 5,
             fetch_k: int = 20,
             lambda_mult: float = 0.5,
             filter: Optional[Dict[str, str]] = None,
@@ -974,7 +974,7 @@ class OracleAIVector(VectorStore):
     async def amax_marginal_relevance_search_by_vector(
             self,
             embedding: List[float],
-            k: int = 4,
+            k: int = 5,
             fetch_k: int = 20,
             lambda_mult: float = 0.5,
             filter: Optional[Dict[str, str]] = None,

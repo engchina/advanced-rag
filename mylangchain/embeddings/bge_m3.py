@@ -90,7 +90,6 @@ class BGEM3Embeddings(BaseModel, Embeddings):
                                         max_length=8192,
                                         # If you don't need such a long length, you can set a smaller value to speed up the encoding process.
                                         )['dense_vecs']
-        print(f"{type(embeddings[0])}")
         return list(map(float, embeddings[0]))
 
     async def aembed_query(self, text: str) -> List[float]:
