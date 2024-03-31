@@ -421,7 +421,7 @@ def chat_document_stream(question_embedding_model_checkbox_group_input, reranker
         gemini_result)
 
 
-def calc_distance_scores(sentence0_input, sentence1_input, sentence2_input):
+def calc_distance_scores(calculate_embedding_model_radio_input, sentence0_input, sentence1_input, sentence2_input):
     # embedding
     # cohere_embeddings = CohereEmbeddings(model="embed-multilingual-v3.0")
 
@@ -432,15 +432,18 @@ def calc_distance_scores(sentence0_input, sentence1_input, sentence2_input):
             sentence2_input
         ]})
 
-    # embeddings = bge_m3_embeddings.embed_documents(sentences_all['text'].tolist())
-    embeddings = e5_large_embeddings.embed_documents(sentences_all['text'].tolist())
-    # embeddings = oci_cohere_embeddings.embed_documents(sentences_all['text'].tolist())
+    if calculate_embedding_model_radio_input == 'cohere/embed-multilingual-v3.0':
+        embeddings = oci_cohere_embeddings.embed_documents(sentences_all['text'].tolist())
+    elif calculate_embedding_model_radio_input == 'BAAI/bge-m3':
+        embeddings = bge_m3_embeddings.embed_documents(sentences_all['text'].tolist())
+    elif calculate_embedding_model_radio_input == 'intfloat/multilingual-e5-large':
+        embeddings = e5_large_embeddings.embed_documents(sentences_all['text'].tolist())
+    else:
+        embeddings = e5_large_embeddings.embed_documents(sentences_all['text'].tolist())
+
     sentence0_embedding = embeddings[0]
     sentence1_embedding = embeddings[1]
     sentence2_embedding = embeddings[2]
-    # print(f"{sentence0_embedding=}")
-    # print(f"{sentence1_embedding=}")
-    # print(f"{sentence2_embedding=}")
 
     scores = []
     # calculate
@@ -746,27 +749,32 @@ with gr.Blocks(css=custom_css) as app:
         with gr.TabItem(label="Step-5.距離の計算"):
             with gr.Row():
                 with gr.Column(scale=40):
-                    sentence0 = gr.Textbox(label="Sentence 0")
+                    sentence0 = gr.Textbox(label="文字列-0")
                 with gr.Column(scale=20):
-                    cosine_score0 = gr.Textbox(label=f"Cosine Distance 0")
+                    cosine_score0 = gr.Textbox(label=f"コサイン距離-0")
                 with gr.Column(scale=20):
-                    cosine_similarity0 = gr.Textbox(label=f"Cosine Similarity 0")
-                with gr.Column(scale=20):
+                    cosine_similarity0 = gr.Textbox(label=f"コサイン類似度-0")
+                with gr.Column(scale=20, visible=False):
                     euclidean_score0 = gr.Textbox(label=f"Euclidean Distance 0")
                 with gr.Column(scale=20, visible=False):
                     dot_score0 = gr.Textbox(label=f"Dot Product Similarity 0")
             with gr.Row():
                 num_scores = 2
                 with gr.Column(scale=40):
-                    sentences = [gr.Textbox(label=f"Sentence {i}") for i in range(1, num_scores + 1)]
+                    sentences = [gr.Textbox(label=f"文字列-{i}") for i in range(1, num_scores + 1)]
                 with gr.Column(scale=20):
-                    cosine_scores = [gr.Textbox(label=f"Cosine Distance {i}") for i in range(1, num_scores + 1)]
+                    cosine_scores = [gr.Textbox(label=f"コサイン距離-{i}") for i in range(1, num_scores + 1)]
                 with gr.Column(scale=20):
-                    cosine_similarities = [gr.Textbox(label=f"Cosine Similarity {i}") for i in range(1, num_scores + 1)]
-                with gr.Column(scale=20):
+                    cosine_similarities = [gr.Textbox(label=f"コサイン類似度-{i}") for i in range(1, num_scores + 1)]
+                with gr.Column(scale=20, visible=False):
                     euclidean_scores = [gr.Textbox(label=f"Euclidean Distance {i}") for i in range(1, num_scores + 1)]
                 with gr.Column(scale=20, visible=False):
                     dot_scores = [gr.Textbox(label=f"Dot Product Similarity {i}") for i in range(1, num_scores + 1)]
+            with gr.Row():
+                calculate_embedding_model_radio = gr.Radio(
+                    ["cohere/embed-multilingual-v3.0", "BAAI/bge-m3",
+                     "intfloat/multilingual-e5-large"],
+                    label="Embedding モデル*", value="cohere/embed-multilingual-v3.0")
             with gr.Row():
                 # plot = gr.Plot(label="UMAP", show_label=False, visible=False)
                 calculate_distance = gr.Button("計算", variant="primary")
@@ -776,23 +784,23 @@ with gr.Blocks(css=custom_css) as app:
             with gr.Row():
                 with gr.Column(scale=50):
                     gr.Markdown(value="### Cosine Similarity")
+                    gr.Image(value="./images/cosine.png", height=750, width=750)
                     gr.Markdown(
                         value="コサイン類似度とは、2 つのベクトルの間の角度のコサイン値を計算したものです。角度が小さいほど、2 つのベクトルの類似度が高くなります。")
-                    gr.Image(value="./images/cosine.png")
                 with gr.Column(scale=50):
                     gr.Markdown(value="### Euclidean Distances")
+                    gr.Image(value="./images/euclidean.png", height=750, width=750)
                     gr.Markdown(
                         value="ユークリッド距離は、比較しているベクトルの各対応する座標間の距離、つまり2点間の直線距離を表します。")
-                    gr.Image(value="./images/euclidean.png")
                 with gr.Column(scale=40, visible=False):
                     gr.Markdown(value="### Dot Product Similarity")
+                    gr.Image(value="./images/dot.png", height=750, width=750)
                     gr.Markdown(
                         value="大きなドット積の値は、ベクトル同士が類似していることを示唆し、小さな値はあまり類似していないことを示唆します。")
                     gr.Markdown(
                         value="ユークリッド距離を使用するよりも、ドット積による類似度を使用することは、特に高次元ベクトルに対して有用です。")
                     gr.Markdown(
                         value="ベクトルを正規化し、ドット積による類似度を使用することは、コサイン類似度を使用することと同等であることに注意してください。")
-                    gr.Image(value="./images/dot.png")
 
         load_button.click(load_document,
                           inputs=[uploaded_file],
@@ -817,7 +825,7 @@ with gr.Blocks(css=custom_css) as app:
                                             answer_by_google_gemini_text])
 
     calculate_distance.click(calc_distance_scores,
-                             inputs=[sentence0] + sentences,
+                             inputs=[calculate_embedding_model_radio] + [sentence0] + sentences,
                              # outputs=[euclidean_score0, cosine_score0,
                              #          dot_score0] + euclidean_scores + cosine_scores + dot_scores + [plot])
                              outputs=[euclidean_score0, cosine_score0, dot_score0,
