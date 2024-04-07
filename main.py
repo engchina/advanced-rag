@@ -152,7 +152,9 @@ def split_document(chunk_size_text_input, chunk_overlap_text_input):
     Split the Document into chunks for embedding and vector storage.
     """
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=int(chunk_size_text_input),
-                                                   chunk_overlap=int(chunk_overlap_text_input))
+                                                   chunk_overlap=int(chunk_overlap_text_input),
+                                                   separators=["\n\n", "\n", "。", "、", "？", "！", "；", ".", ",", "?",
+                                                               "!", ";"])
 
     global file_contents, file_contents_splits
     file_contents_splits = text_splitter.split_documents(file_contents)
@@ -713,7 +715,7 @@ with gr.Blocks(css=custom_css) as app:
                          "BAAI/bge-reranker-v2-minicpm-layerwise",
                          "BAAI/bge-reranker-v2-gemma",
                          "BAAI/bge-reranker-v2-m3"],
-                        label="Reranker モデル*", value="None")
+                        label="Reranker モデル*", value="cohere/rerank-multilingual-v2.0")
             with gr.Row():
                 with gr.Column():
                     llm_answer_checkbox_group = gr.CheckboxGroup(
@@ -833,4 +835,4 @@ with gr.Blocks(css=custom_css) as app:
 
 app.queue()
 if __name__ == "__main__":
-    app.launch(show_api=False)
+    app.launch(show_api=False, server_port=7861)
